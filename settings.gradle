@@ -1,7 +1,6 @@
 pluginManagement {
 	repositories {
 		// 优先本地
-		mavenLocal()
 		mavenCentral()
 		gradlePluginPortal()
 		maven {
@@ -9,6 +8,7 @@ pluginManagement {
 			maven { url 'https://maven.aliyun.com/nexus/content/repositories/jcenter' }
 			url 'https://repo.spring.io/release'
 		}
+		mavenLocal()
 		if (version.endsWith('-SNAPSHOT')) {
 			maven { url "https://repo.spring.io/snapshot" }
 		}
@@ -30,7 +30,7 @@ plugins {
 	id "io.spring.ge.conventions" version "0.0.9"
 }
 
-rootProject.name="spring-boot-build"
+rootProject.name="sp-bt"
 
 settings.gradle.projectsLoaded {
 	gradleEnterprise {
@@ -81,6 +81,7 @@ include "spring-boot-tests:spring-boot-integration-tests:spring-boot-loader-test
 include "spring-boot-tests:spring-boot-integration-tests:spring-boot-server-tests"
 include "spring-boot-system-tests:spring-boot-deployment-tests"
 include "spring-boot-system-tests:spring-boot-image-tests"
+include "crazy-springboot:chapter1"
 
 file("${rootDir}/spring-boot-project/spring-boot-starters").eachDirMatch(~/spring-boot-starter.*/) {
 	include "spring-boot-project:spring-boot-starters:${it.name}"

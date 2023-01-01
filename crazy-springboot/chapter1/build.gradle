@@ -6,10 +6,19 @@ group 'org.springframework.boot'
 version '3.0.0-SNAPSHOT'
 
 repositories {
+    // 优先本地
+    mavenLocal()
+    maven { url 'https://maven.aliyun.com/nexus/content/groups/public/' } //阿里云
+    maven { url 'https://maven.aliyun.com/nexus/content/repositories/jcenter' }
+    maven { url "https://repo.spring.io/snapshot" } // Reactor
+    mavenCentral()
     mavenCentral()
 }
 
 dependencies {
+    // https://mvnrepository.com/artifact/io.lettuce/lettuce-core
+    implementation group: 'io.lettuce', name: 'lettuce-core', version: '6.1.5.RELEASE'
+
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
 }
