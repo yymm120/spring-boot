@@ -326,6 +326,7 @@ public class ServerProperties {
 			@DurationUnit(ChronoUnit.SECONDS)
 			private Duration timeout = Duration.ofMinutes(30);
 
+			@NestedConfigurationProperty
 			private final Cookie cookie = new Cookie();
 
 			public Duration getTimeout() {
@@ -689,7 +690,7 @@ public class ServerProperties {
 			private String locale;
 
 			/**
-			 * Whether to check for log file existence so it can be recreated it if an
+			 * Whether to check for log file existence so it can be recreated if an
 			 * external process has renamed it.
 			 */
 			private boolean checkExists = false;
@@ -1754,8 +1755,14 @@ public class ServerProperties {
 
 		public static class Options {
 
+			/**
+			 * Socket options as defined in org.xnio.Options.
+			 */
 			private Map<String, String> socket = new LinkedHashMap<>();
 
+			/**
+			 * Server options as defined in io.undertow.UndertowOptions.
+			 */
 			private Map<String, String> server = new LinkedHashMap<>();
 
 			public Map<String, String> getServer() {

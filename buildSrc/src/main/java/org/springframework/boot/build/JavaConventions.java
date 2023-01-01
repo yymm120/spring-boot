@@ -49,6 +49,7 @@ import org.gradle.external.javadoc.CoreJavadocOptions;
 import org.gradle.testretry.TestRetryPlugin;
 import org.gradle.testretry.TestRetryTaskExtension;
 
+import org.springframework.boot.build.architecture.ArchitecturePlugin;
 import org.springframework.boot.build.classpath.CheckClasspathForProhibitedDependencies;
 import org.springframework.boot.build.optional.OptionalDependenciesPlugin;
 import org.springframework.boot.build.testing.TestFailuresPlugin;
@@ -62,8 +63,8 @@ import org.springframework.util.StringUtils;
  * <ul>
  * <li>The project is configured with source and target compatibility of 17
  * <li>{@link SpringJavaFormatPlugin Spring Java Format}, {@link CheckstylePlugin
- * Checkstyle}, {@link TestFailuresPlugin Test Failures}, and {@link TestRetryPlugin Test
- * Retry} plugins are applied
+ * Checkstyle}, {@link TestFailuresPlugin Test Failures}, {@link TestRetryPlugin Test
+ * Retry}, and {@link ArchitecturePlugin Architecture} plugins are applied
  * <li>{@link Test} tasks are configured:
  * <ul>
  * <li>to use JUnit Platform
@@ -108,6 +109,7 @@ class JavaConventions {
 	void apply(Project project) {
 		project.getPlugins().withType(JavaBasePlugin.class, (java) -> {
 			project.getPlugins().apply(TestFailuresPlugin.class);
+			project.getPlugins().apply(ArchitecturePlugin.class);
 			configureSpringJavaFormat(project);
 			configureJavaConventions(project);
 			configureJavadocConventions(project);
@@ -160,8 +162,8 @@ class JavaConventions {
 		project.getTasks().withType(Test.class, (test) -> {
 			test.useJUnitPlatform();
 			test.setMaxHeapSize("1024M");
-			project.getTasks().withType(Checkstyle.class, (checkstyle) -> test.mustRunAfter(checkstyle));
-			project.getTasks().withType(CheckFormat.class, (checkFormat) -> test.mustRunAfter(checkFormat));
+			project.getTasks().withType(Checkstyle.class, test::mustRunAfter);
+			project.getTasks().withType(CheckFormat.class, test::mustRunAfter);
 		});
 		project.getPlugins().withType(JavaPlugin.class, (javaPlugin) -> project.getDependencies()
 				.add(JavaPlugin.TEST_RUNTIME_ONLY_CONFIGURATION_NAME, "org.junit.platform:junit-platform-launcher"));
@@ -237,9 +239,11 @@ class JavaConventions {
 				.matching((configuration) -> configuration.getName().endsWith("Classpath")
 						|| JavaPlugin.ANNOTATION_PROCESSOR_CONFIGURATION_NAME.equals(configuration.getName()))
 				.all((configuration) -> configuration.extendsFrom(dependencyManagement));
-		Dependency springBootParent = project.getDependencies().enforcedPlatform(project.getDependencies()
-				.project(Collections.singletonMap("path", ":spring-boot-project:spring-boot-parent")));
-		dependencyManagement.getDependencies().add(springBootParent);
+		String path = project.getName().contains("spring-boot-starter")
+				? ":spring-boot-project:spring-boot-dependencies" : ":spring-boot-project:spring-boot-parent";
+		Dependency dependency = project.getDependencies()
+				.enforcedPlatform(project.getDependencies().project(Collections.singletonMap("path", path)));
+		dependencyManagement.getDependencies().add(dependency);
 		project.getPlugins().withType(OptionalDependenciesPlugin.class, (optionalDependencies) -> configurations
 				.getByName(OptionalDependenciesPlugin.OPTIONAL_CONFIGURATION_NAME).extendsFrom(dependencyManagement));
 	}

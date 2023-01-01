@@ -59,7 +59,8 @@ import org.springframework.boot.configurationprocessor.metadata.ItemMetadata;
  * @author Jonas Keßler
  * @since 1.2.0
  */
-@SupportedAnnotationTypes({ ConfigurationMetadataAnnotationProcessor.CONFIGURATION_PROPERTIES_ANNOTATION,
+@SupportedAnnotationTypes({ ConfigurationMetadataAnnotationProcessor.AUTO_CONFIGURATION_ANNOTATION,
+		ConfigurationMetadataAnnotationProcessor.CONFIGURATION_PROPERTIES_ANNOTATION,
 		ConfigurationMetadataAnnotationProcessor.CONTROLLER_ENDPOINT_ANNOTATION,
 		ConfigurationMetadataAnnotationProcessor.ENDPOINT_ANNOTATION,
 		ConfigurationMetadataAnnotationProcessor.JMX_ENDPOINT_ANNOTATION,
@@ -98,6 +99,8 @@ public class ConfigurationMetadataAnnotationProcessor extends AbstractProcessor 
 	static final String READ_OPERATION_ANNOTATION = "org.springframework.boot.actuate.endpoint.annotation.ReadOperation";
 
 	static final String NAME_ANNOTATION = "org.springframework.boot.context.properties.bind.Name";
+
+	static final String AUTO_CONFIGURATION_ANNOTATION = "org.springframework.boot.autoconfigure.AutoConfiguration";
 
 	private static final Set<String> SUPPORTED_OPTIONS = Collections
 			.unmodifiableSet(Collections.singleton(ADDITIONAL_METADATA_LOCATIONS_OPTION));
@@ -183,7 +186,7 @@ public class ConfigurationMetadataAnnotationProcessor extends AbstractProcessor 
 		}
 		if (roundEnv.processingOver()) {
 			try {
-				writeMetaData();
+				writeMetadata();
 			}
 			catch (Exception ex) {
 				throw new IllegalStateException("Failed to write metadata", ex);
@@ -330,7 +333,7 @@ public class ConfigurationMetadataAnnotationProcessor extends AbstractProcessor 
 		return null;
 	}
 
-	protected ConfigurationMetadata writeMetaData() throws Exception {
+	protected ConfigurationMetadata writeMetadata() throws Exception {
 		ConfigurationMetadata metadata = this.metadataCollector.getMetadata();
 		metadata = mergeAdditionalMetadata(metadata);
 		if (!metadata.getItems().isEmpty()) {

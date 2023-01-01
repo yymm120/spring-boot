@@ -20,15 +20,16 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.Set;
 
+import javax.servlet.FilterChain;
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
 import io.micrometer.core.annotation.Timed;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.Timer.Builder;
 import io.micrometer.core.instrument.Timer.Sample;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -134,8 +135,8 @@ public class WebMvcMetricsFilter extends OncePerRequestFilter {
 			Object handler = getHandler(request);
 			Set<Timed> annotations = getTimedAnnotations(handler);
 			Timer.Sample timerSample = timingContext.getTimerSample();
-			AutoTimer.apply(this.autoTimer, this.metricName, annotations, (builder) -> timerSample
-					.stop(getTimer(builder, handler, request, response, exception).register(this.registry)));
+			AutoTimer.apply(this.autoTimer, this.metricName, annotations,
+					(builder) -> timerSample.stop(getTimer(builder, handler, request, response, exception)));
 		}
 		catch (Exception ex) {
 			logger.warn("Failed to record timer metrics", ex);
@@ -155,9 +156,10 @@ public class WebMvcMetricsFilter extends OncePerRequestFilter {
 		return Collections.emptySet();
 	}
 
-	private Timer.Builder getTimer(Builder builder, Object handler, HttpServletRequest request,
-			HttpServletResponse response, Throwable exception) {
-		return builder.tags(this.tagsProvider.getTags(request, response, handler, exception));
+	private Timer getTimer(Builder builder, Object handler, HttpServletRequest request, HttpServletResponse response,
+			Throwable exception) {
+		return builder.description("Duration of HTTP server request handling")
+				.tags(this.tagsProvider.getTags(request, response, handler, exception)).register(this.registry);
 	}
 
 	/**

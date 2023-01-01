@@ -38,6 +38,7 @@ class Saml2LoginConfiguration {
 	@Bean
 	SecurityFilterChain samlSecurityFilterChain(HttpSecurity http) throws Exception {
 		http.authorizeRequests((requests) -> requests.anyRequest().authenticated()).saml2Login();
+		http.saml2Logout();
 		return http.build();
 	}
 

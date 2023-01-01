@@ -14,25 +14,26 @@
  * limitations under the License.
  */
 
-package org.springframework.boot.actuate.autoconfigure.observation;
+package org.springframework.boot.gradle.tasks.application;
 
-import io.micrometer.observation.ObservationRegistry;
+import org.gradle.api.tasks.Optional;
+import org.gradle.jvm.application.tasks.CreateStartScripts;
 
 /**
- * Callback interface that can be used to customize auto-configured
- * {@link ObservationRegistry observation registries}.
+ * Customization of {@link CreateStartScripts} that makes the {@link #getMainClassName()
+ * main class name} optional.
  *
- * @param <T> the registry type to customize
- * @author Moritz Halbritter
- * @since 3.0.0
+ * @author Andy Wilkinson
+ * @since 2.0.0
+ * @deprecated since 2.5.10 for removal in 3.0.0 in favor of {@link CreateStartScripts}.
  */
-@FunctionalInterface
-public interface ObservationRegistryCustomizer<T extends ObservationRegistry> {
+@Deprecated
+public class CreateBootStartScripts extends CreateStartScripts {
 
-	/**
-	 * Customize the given {@code registry}.
-	 * @param registry the registry to customize
-	 */
-	void customize(T registry);
+	@Override
+	@Optional
+	public String getMainClassName() {
+		return super.getMainClassName();
+	}
 
 }

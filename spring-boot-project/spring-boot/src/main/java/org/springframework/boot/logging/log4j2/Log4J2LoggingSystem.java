@@ -194,6 +194,18 @@ public class Log4J2LoggingSystem extends Slf4JLoggingSystem {
 	}
 
 	/**
+	 * Load the configuration from the given {@code location}.
+	 * @param location the location
+	 * @param logFile log file configuration
+	 * @deprecated since 2.6.0 for removal in 3.0.0 in favor of
+	 * {@link #loadConfiguration(String, LogFile, List)}
+	 */
+	@Deprecated
+	protected void loadConfiguration(String location, LogFile logFile) {
+		this.loadConfiguration(location, logFile, Collections.emptyList());
+	}
+
+	/**
 	 * Load the configuration from the given {@code location}, creating a composite using
 	 * the configuration from the given {@code overrides}.
 	 * @param location the location

@@ -81,7 +81,7 @@ class BindFailureAnalyzerTests {
 	}
 
 	@Test // gh-27028
-	void bindExceptionDueToClassNotFoundConvertionFailure() {
+	void bindExceptionDueToClassNotFoundConversionFailure() {
 		FailureAnalysis analysis = performAnalysis(GenericFailureConfiguration.class,
 				"test.foo.type=com.example.Missing");
 		assertThat(analysis.getDescription()).contains(failure("test.foo.type", "com.example.Missing",
@@ -100,7 +100,7 @@ class BindFailureAnalyzerTests {
 	}
 
 	private static String failure(String property, String value, String origin, String reason) {
-		return String.format("Property: %s%n    Value: %s%n    Origin: %s%n    Reason: %s", property, value, origin,
+		return String.format("Property: %s%n    Value: \"%s\"%n    Origin: %s%n    Reason: %s", property, value, origin,
 				reason);
 	}
 

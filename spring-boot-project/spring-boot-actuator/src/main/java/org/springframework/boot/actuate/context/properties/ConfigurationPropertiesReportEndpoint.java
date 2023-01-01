@@ -19,6 +19,7 @@ package org.springframework.boot.actuate.context.properties;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Parameter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -40,6 +41,7 @@ import com.fasterxml.jackson.databind.introspect.Annotated;
 import com.fasterxml.jackson.databind.introspect.AnnotatedMethod;
 import com.fasterxml.jackson.databind.introspect.JacksonAnnotationIntrospector;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.ser.BeanPropertyWriter;
 import com.fasterxml.jackson.databind.ser.BeanSerializerFactory;
 import com.fasterxml.jackson.databind.ser.BeanSerializerModifier;
@@ -47,10 +49,12 @@ import com.fasterxml.jackson.databind.ser.PropertyWriter;
 import com.fasterxml.jackson.databind.ser.SerializerFactory;
 import com.fasterxml.jackson.databind.ser.impl.SimpleBeanPropertyFilter;
 import com.fasterxml.jackson.databind.ser.impl.SimpleFilterProvider;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.BeansException;
 import org.springframework.boot.actuate.endpoint.SanitizableData;
 import org.springframework.boot.actuate.endpoint.Sanitizer;
@@ -61,8 +65,7 @@ import org.springframework.boot.actuate.endpoint.annotation.Selector;
 import org.springframework.boot.context.properties.BoundConfigurationProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.ConfigurationPropertiesBean;
-import org.springframework.boot.context.properties.ConfigurationPropertiesBindConstructorProvider;
-import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.ConstructorBinding;
 import org.springframework.boot.context.properties.bind.Name;
 import org.springframework.boot.context.properties.source.ConfigurationProperty;
 import org.springframework.boot.context.properties.source.ConfigurationPropertyName;
@@ -71,12 +74,15 @@ import org.springframework.boot.origin.Origin;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.core.DefaultParameterNameDiscoverer;
+import org.springframework.core.KotlinDetector;
 import org.springframework.core.ParameterNameDiscoverer;
 import org.springframework.core.annotation.MergedAnnotation;
 import org.springframework.core.annotation.MergedAnnotations;
+import org.springframework.core.annotation.MergedAnnotations.SearchStrategy;
 import org.springframework.core.env.PropertySource;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.StringUtils;
+import org.springframework.util.unit.DataSize;
 
 /**
  * {@link Endpoint @Endpoint} to expose application properties from
@@ -156,8 +162,22 @@ public class ConfigurationPropertiesReportEndpoint implements ApplicationContext
 			JsonMapper.Builder builder = JsonMapper.builder();
 			configureJsonMapper(builder);
 			this.objectMapper = builder.build();
+			configureObjectMapper(this.objectMapper);
 		}
 		return this.objectMapper;
+	}
+
+	/**
+	 * Configure Jackson's {@link ObjectMapper} to be used to serialize the
+	 * {@link ConfigurationProperties @ConfigurationProperties} objects into a {@link Map}
+	 * structure.
+	 * @param mapper the object mapper
+	 * @deprecated since 2.6 for removal in 3.0 in favor of
+	 * {@link #configureJsonMapper(com.fasterxml.jackson.databind.json.JsonMapper.Builder)}
+	 */
+	@Deprecated
+	protected void configureObjectMapper(ObjectMapper mapper) {
+
 	}
 
 	/**
@@ -171,12 +191,12 @@ public class ConfigurationPropertiesReportEndpoint implements ApplicationContext
 		builder.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
 		builder.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
 		builder.configure(SerializationFeature.WRITE_DURATIONS_AS_TIMESTAMPS, false);
-		JsonMapper.builder();
 		builder.configure(MapperFeature.USE_STD_BEAN_NAMING, true);
 		builder.serializationInclusion(Include.NON_NULL);
 		applyConfigurationPropertiesFilter(builder);
 		applySerializationModifier(builder);
 		builder.addModule(new JavaTimeModule());
+		builder.addModule(new ConfigurationPropertiesModule());
 	}
 
 	private void applyConfigurationPropertiesFilter(JsonMapper.Builder builder) {
@@ -458,6 +478,17 @@ public class ConfigurationPropertiesReportEndpoint implements ApplicationContext
 	}
 
 	/**
+	 * {@link SimpleModule} for configure the serializer.
+	 */
+	private static final class ConfigurationPropertiesModule extends SimpleModule {
+
+		private ConfigurationPropertiesModule() {
+			addSerializer(DataSize.class, ToStringSerializer.instance);
+		}
+
+	}
+
+	/**
 	 * {@link BeanSerializerModifier} to return only relevant configuration properties.
 	 */
 	protected static class GenericSerializerModifier extends BeanSerializerModifier {
@@ -469,9 +500,7 @@ public class ConfigurationPropertiesReportEndpoint implements ApplicationContext
 				List<BeanPropertyWriter> beanProperties) {
 			List<BeanPropertyWriter> result = new ArrayList<>();
 			Class<?> beanClass = beanDesc.getType().getRawClass();
-			Bindable<?> bindable = Bindable.of(ClassUtils.getUserClass(beanClass));
-			Constructor<?> bindConstructor = ConfigurationPropertiesBindConstructorProvider.INSTANCE
-					.getBindConstructor(bindable, false);
+			Constructor<?> bindConstructor = findBindConstructor(ClassUtils.getUserClass(beanClass));
 			for (BeanPropertyWriter writer : beanProperties) {
 				if (isCandidate(beanDesc, writer, bindConstructor)) {
 					result.add(writer);
@@ -537,6 +566,34 @@ public class ConfigurationPropertiesReportEndpoint implements ApplicationContext
 				return propertyName;
 			}
 			return StringUtils.capitalize(propertyName);
+		}
+
+		private Constructor<?> findBindConstructor(Class<?> type) {
+			boolean classConstructorBinding = MergedAnnotations
+					.from(type, SearchStrategy.TYPE_HIERARCHY_AND_ENCLOSING_CLASSES)
+					.isPresent(ConstructorBinding.class);
+			if (KotlinDetector.isKotlinPresent() && KotlinDetector.isKotlinType(type)) {
+				Constructor<?> constructor = BeanUtils.findPrimaryConstructor(type);
+				if (constructor != null) {
+					return findBindConstructor(classConstructorBinding, constructor);
+				}
+			}
+			return findBindConstructor(classConstructorBinding, type.getDeclaredConstructors());
+		}
+
+		private Constructor<?> findBindConstructor(boolean classConstructorBinding, Constructor<?>... candidates) {
+			List<Constructor<?>> candidateConstructors = Arrays.stream(candidates)
+					.filter((constructor) -> constructor.getParameterCount() > 0).collect(Collectors.toList());
+			List<Constructor<?>> flaggedConstructors = candidateConstructors.stream()
+					.filter((candidate) -> MergedAnnotations.from(candidate).isPresent(ConstructorBinding.class))
+					.collect(Collectors.toList());
+			if (flaggedConstructors.size() == 1) {
+				return flaggedConstructors.get(0);
+			}
+			if (classConstructorBinding && candidateConstructors.size() == 1) {
+				return candidateConstructors.get(0);
+			}
+			return null;
 		}
 
 	}

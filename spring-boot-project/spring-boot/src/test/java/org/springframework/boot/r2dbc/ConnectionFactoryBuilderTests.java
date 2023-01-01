@@ -139,9 +139,9 @@ class ConnectionFactoryBuilderTests {
 
 	@Test
 	void buildWhenDerivedWithNewDatabaseReturnsNewConnectionFactory() {
-		String intialDatabaseName = UUID.randomUUID().toString();
+		String initialDatabaseName = UUID.randomUUID().toString();
 		ConnectionFactory connectionFactory = ConnectionFactoryBuilder
-				.withUrl(EmbeddedDatabaseConnection.H2.getUrl(intialDatabaseName)).build();
+				.withUrl(EmbeddedDatabaseConnection.H2.getUrl(initialDatabaseName)).build();
 		ConnectionFactoryOptions initialOptions = ((OptionsCapableConnectionFactory) connectionFactory).getOptions();
 		String derivedDatabaseName = UUID.randomUUID().toString();
 		ConnectionFactory derived = ConnectionFactoryBuilder.derivedFrom(connectionFactory)
@@ -264,6 +264,11 @@ class ConnectionFactoryBuilderTests {
 
 		MAX_CREATE_CONNECTION_TIME(PoolingConnectionFactoryProvider.MAX_CREATE_CONNECTION_TIME, Duration.ofSeconds(10),
 				"maxCreateConnectionTime"),
+
+		MAX_VALIDATION_TIME(PoolingConnectionFactoryProvider.MAX_VALIDATION_TIME, Duration.ofMinutes(4),
+				"maxValidationTime"),
+
+		MIN_IDLE(PoolingConnectionFactoryProvider.MIN_IDLE, 5, "minIdle"),
 
 		POOL_NAME(PoolingConnectionFactoryProvider.POOL_NAME, "testPool", "name"),
 

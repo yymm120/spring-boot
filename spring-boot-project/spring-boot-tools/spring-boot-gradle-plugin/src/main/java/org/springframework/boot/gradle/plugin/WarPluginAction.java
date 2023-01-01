@@ -72,12 +72,11 @@ class WarPluginAction implements PluginApplicationAction {
 				.getByName(SpringBootPlugin.DEVELOPMENT_ONLY_CONFIGURATION_NAME);
 		Configuration productionRuntimeClasspath = project.getConfigurations()
 				.getByName(SpringBootPlugin.PRODUCTION_RUNTIME_CLASSPATH_CONFIGURATION_NAME);
-		Callable<FileCollection> classpath = () -> project.getExtensions().getByType(SourceSetContainer.class)
-				.getByName(SourceSet.MAIN_SOURCE_SET_NAME).getRuntimeClasspath()
-				.minus(providedRuntimeConfiguration(project)).minus((developmentOnly.minus(productionRuntimeClasspath)))
-				.filter(new JarTypeFileSpec());
-		TaskProvider<ResolveMainClassName> resolveMainClassName = project.getTasks()
-				.named(SpringBootPlugin.RESOLVE_MAIN_CLASS_NAME_TASK_NAME, ResolveMainClassName.class);
+		Callable<FileCollection> classpath = () -> sourceSets(project).getByName(SourceSet.MAIN_SOURCE_SET_NAME)
+				.getRuntimeClasspath().minus(providedRuntimeConfiguration(project))
+				.minus((developmentOnly.minus(productionRuntimeClasspath))).filter(new JarTypeFileSpec());
+		TaskProvider<ResolveMainClassName> resolveMainClassName = ResolveMainClassName
+				.registerForTask(SpringBootPlugin.BOOT_WAR_TASK_NAME, project, classpath);
 		TaskProvider<BootWar> bootWarProvider = project.getTasks().register(SpringBootPlugin.BOOT_WAR_TASK_NAME,
 				BootWar.class, (bootWar) -> {
 					bootWar.setGroup(BasePlugin.BUILD_GROUP);
@@ -91,8 +90,13 @@ class WarPluginAction implements PluginApplicationAction {
 							.convention(resolveMainClassName.flatMap((resolver) -> manifestStartClass.isPresent()
 									? manifestStartClass : resolveMainClassName.get().readMainClassName()));
 				});
-		bootWarProvider.map((bootWar) -> bootWar.getClasspath());
+		bootWarProvider.map(War::getClasspath);
 		return bootWarProvider;
+	}
+
+	@SuppressWarnings("deprecation")
+	private SourceSetContainer sourceSets(Project project) {
+		return project.getConvention().getPlugin(org.gradle.api.plugins.JavaPluginConvention.class).getSourceSets();
 	}
 
 	private FileCollection providedRuntimeConfiguration(Project project) {
@@ -105,7 +109,6 @@ class WarPluginAction implements PluginApplicationAction {
 				.configure((buildImage) -> buildImage.getArchiveFile().set(bootWar.get().getArchiveFile()));
 	}
 
-	@SuppressWarnings("deprecation")
 	private void configureArtifactPublication(TaskProvider<BootWar> bootWar) {
 		this.singlePublishedArtifact.addWarCandidate(bootWar);
 	}

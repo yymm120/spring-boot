@@ -60,10 +60,12 @@ import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.AfterRollbackProcessor;
+import org.springframework.kafka.listener.BatchErrorHandler;
 import org.springframework.kafka.listener.CommonErrorHandler;
 import org.springframework.kafka.listener.ConsumerAwareRebalanceListener;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.listener.ContainerProperties.AckMode;
+import org.springframework.kafka.listener.ErrorHandler;
 import org.springframework.kafka.listener.RecordInterceptor;
 import org.springframework.kafka.listener.adapter.RecordFilterStrategy;
 import org.springframework.kafka.retrytopic.DestinationTopic;
@@ -503,6 +505,18 @@ class KafkaAutoConfigurationTests {
 	}
 
 	@Test
+	@Deprecated
+	@SuppressWarnings("deprecation")
+	void logOnlyRecordMetadataProperty() {
+		this.contextRunner.withPropertyValues("spring.kafka.listener.only-log-record-metadata=true").run((context) -> {
+			AbstractKafkaListenerContainerFactory<?, ?, ?> kafkaListenerContainerFactory = (AbstractKafkaListenerContainerFactory<?, ?, ?>) context
+					.getBean(KafkaListenerContainerFactory.class);
+			ContainerProperties containerProperties = kafkaListenerContainerFactory.getContainerProperties();
+			assertThat(containerProperties.isOnlyLogRecordMetadata()).isTrue();
+		});
+	}
+
+	@Test
 	void testKafkaTemplateRecordMessageConverters() {
 		this.contextRunner.withUserConfiguration(MessageConverterConfiguration.class)
 				.withPropertyValues("spring.kafka.producer.transaction-id-prefix=test").run((context) -> {
@@ -575,6 +589,48 @@ class KafkaAutoConfigurationTests {
 			assertThat(factory).hasFieldOrPropertyWithValue("recordFilterStrategy",
 					context.getBean("recordFilterStrategy"));
 		});
+	}
+
+	@Test
+	@Deprecated
+	void testConcurrentKafkaListenerContainerFactoryWithCustomErrorHandler() {
+		this.contextRunner.withBean("errorHandler", ErrorHandler.class, () -> mock(ErrorHandler.class))
+				.run((context) -> {
+					ConcurrentKafkaListenerContainerFactory<?, ?> factory = context
+							.getBean(ConcurrentKafkaListenerContainerFactory.class);
+					assertThat(factory).hasFieldOrPropertyWithValue("errorHandler", context.getBean("errorHandler"));
+				});
+	}
+
+	@Test
+	@Deprecated
+	void concurrentKafkaListenerContainerFactoryInBatchModeShouldUseBatchErrorHandler() {
+		this.contextRunner.withBean("batchErrorHandler", BatchErrorHandler.class, () -> mock(BatchErrorHandler.class))
+				.withPropertyValues("spring.kafka.listener.type=batch").run((context) -> {
+					ConcurrentKafkaListenerContainerFactory<?, ?> factory = context
+							.getBean(ConcurrentKafkaListenerContainerFactory.class);
+					assertThat(factory).hasFieldOrPropertyWithValue("errorHandler",
+							context.getBean("batchErrorHandler"));
+				});
+	}
+
+	@Test
+	void concurrentKafkaListenerContainerFactoryInBatchModeWhenBatchErrorHandlerNotAvailableShouldBeNull() {
+		this.contextRunner.withPropertyValues("spring.kafka.listener.type=batch").run((context) -> {
+			ConcurrentKafkaListenerContainerFactory<?, ?> factory = context
+					.getBean(ConcurrentKafkaListenerContainerFactory.class);
+			assertThat(factory).hasFieldOrPropertyWithValue("errorHandler", null);
+		});
+	}
+
+	@Test
+	void concurrentKafkaListenerContainerFactoryInBatchModeAndSimpleErrorHandlerShouldBeNull() {
+		this.contextRunner.withPropertyValues("spring.kafka.listener.type=batch")
+				.withBean("errorHandler", ErrorHandler.class, () -> mock(ErrorHandler.class)).run((context) -> {
+					ConcurrentKafkaListenerContainerFactory<?, ?> factory = context
+							.getBean(ConcurrentKafkaListenerContainerFactory.class);
+					assertThat(factory).hasFieldOrPropertyWithValue("errorHandler", null);
+				});
 	}
 
 	@Test
@@ -736,7 +792,7 @@ class KafkaAutoConfigurationTests {
 
 		@Bean
 		RecordInterceptor<Object, Object> recordInterceptor() {
-			return (record, consumer) -> record;
+			return (record) -> record;
 		}
 
 	}

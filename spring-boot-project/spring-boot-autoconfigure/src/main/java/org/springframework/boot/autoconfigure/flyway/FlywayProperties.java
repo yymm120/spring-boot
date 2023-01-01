@@ -49,13 +49,6 @@ public class FlywayProperties {
 	private boolean enabled = true;
 
 	/**
-	 * Whether to check that migration scripts location exists. Should be set to false
-	 * when using a wildcard location or a remote-hosted location such as S3 or GCS.
-	 */
-	@Deprecated
-	private boolean checkLocation = true;
-
-	/**
 	 * Whether to fail if a location of migration scripts doesn't exist.
 	 */
 	private boolean failOnMissingLocations;
@@ -350,7 +343,7 @@ public class FlywayProperties {
 	private String oracleKerberosCacheFile;
 
 	/**
-	 * Location of the Oracle Wallet, used to sign-in to the database automatically.
+	 * Location of the Oracle Wallet, used to sign in to the database automatically.
 	 * Requires Flyway Teams.
 	 */
 	private String oracleWalletLocation;

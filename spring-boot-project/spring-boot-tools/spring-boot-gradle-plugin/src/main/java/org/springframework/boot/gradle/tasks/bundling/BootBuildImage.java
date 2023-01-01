@@ -22,9 +22,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import groovy.lang.Closure;
 import org.gradle.api.Action;
 import org.gradle.api.DefaultTask;
-import org.gradle.api.GradleException;
 import org.gradle.api.JavaVersion;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
@@ -32,8 +32,11 @@ import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Input;
+import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.Nested;
 import org.gradle.api.tasks.Optional;
+import org.gradle.api.tasks.PathSensitive;
+import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.api.tasks.options.Option;
 import org.gradle.work.DisableCachingByDefault;
@@ -99,11 +102,11 @@ public class BootBuildImage extends DefaultTask {
 
 	private final ListProperty<String> tags;
 
-	private final CacheSpec buildCache;
+	private final CacheSpec buildCache = new CacheSpec();
 
-	private final CacheSpec launchCache;
+	private final CacheSpec launchCache = new CacheSpec();
 
-	private final DockerSpec docker;
+	private final DockerSpec docker = new DockerSpec();
 
 	public BootBuildImage() {
 		this.archiveFile = getProject().getObjects().fileProperty();
@@ -115,16 +118,14 @@ public class BootBuildImage extends DefaultTask {
 		this.buildpacks = getProject().getObjects().listProperty(String.class);
 		this.bindings = getProject().getObjects().listProperty(String.class);
 		this.tags = getProject().getObjects().listProperty(String.class);
-		this.buildCache = getProject().getObjects().newInstance(CacheSpec.class);
-		this.launchCache = getProject().getObjects().newInstance(CacheSpec.class);
-		this.docker = getProject().getObjects().newInstance(DockerSpec.class);
 	}
 
 	/**
 	 * Returns the property for the archive file from which the image will be built.
 	 * @return the archive file property
 	 */
-	@Input
+	@InputFile
+	@PathSensitive(PathSensitivity.RELATIVE)
 	public RegularFileProperty getArchiveFile() {
 		return this.archiveFile;
 	}
@@ -453,6 +454,15 @@ public class BootBuildImage extends DefaultTask {
 	}
 
 	/**
+	 * Customizes the {@link CacheSpec} for the build cache using the given
+	 * {@code closure}.
+	 * @param closure the closure
+	 */
+	public void buildCache(Closure<?> closure) {
+		buildCache(Closures.asAction(closure));
+	}
+
+	/**
 	 * Returns the launch cache that will be used when building the image.
 	 * @return the cache
 	 */
@@ -472,6 +482,15 @@ public class BootBuildImage extends DefaultTask {
 	}
 
 	/**
+	 * Customizes the {@link CacheSpec} for the launch cache using the given
+	 * {@code closure}.
+	 * @param closure the closure
+	 */
+	public void launchCache(Closure<?> closure) {
+		launchCache(Closures.asAction(closure));
+	}
+
+	/**
 	 * Returns the Docker configuration the builder will use.
 	 * @return docker configuration.
 	 * @since 2.4.0
@@ -488,6 +507,15 @@ public class BootBuildImage extends DefaultTask {
 	 */
 	public void docker(Action<DockerSpec> action) {
 		action.execute(this.docker);
+	}
+
+	/**
+	 * Configures the Docker connection using the given {@code closure}.
+	 * @param closure the closure to apply
+	 * @since 2.4.0
+	 */
+	public void docker(Closure<?> closure) {
+		docker(Closures.asAction(closure));
 	}
 
 	@TaskAction
@@ -570,11 +598,6 @@ public class BootBuildImage extends DefaultTask {
 	}
 
 	private BuildRequest customizePublish(BuildRequest request) {
-		boolean publishRegistryAuthNotConfigured = this.docker == null || this.docker.getPublishRegistry() == null
-				|| this.docker.getPublishRegistry().hasEmptyAuth();
-		if (this.publish && publishRegistryAuthNotConfigured) {
-			throw new GradleException("Publishing an image requires docker.publishRegistry to be configured");
-		}
 		request = request.withPublish(this.publish);
 		return request;
 	}

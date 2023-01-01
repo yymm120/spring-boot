@@ -261,10 +261,15 @@ public class FlywayAutoConfiguration {
 		@SuppressWarnings("deprecation")
 		private void configureIgnoredMigrations(FluentConfiguration configuration, FlywayProperties properties,
 				PropertyMapper map) {
-			map.from(properties.isIgnoreMissingMigrations()).to(configuration::ignoreMissingMigrations);
-			map.from(properties.isIgnoreIgnoredMigrations()).to(configuration::ignoreIgnoredMigrations);
-			map.from(properties.isIgnorePendingMigrations()).to(configuration::ignorePendingMigrations);
-			map.from(properties.isIgnoreFutureMigrations()).to(configuration::ignoreFutureMigrations);
+			try {
+				map.from(properties.isIgnoreMissingMigrations()).to(configuration::ignoreMissingMigrations);
+				map.from(properties.isIgnoreIgnoredMigrations()).to(configuration::ignoreIgnoredMigrations);
+				map.from(properties.isIgnorePendingMigrations()).to(configuration::ignorePendingMigrations);
+				map.from(properties.isIgnoreFutureMigrations()).to(configuration::ignoreFutureMigrations);
+			}
+			catch (BootstrapMethodError | NoSuchMethodError ex) {
+				// Flyway 9+
+			}
 		}
 
 		private void configureFailOnMissingLocations(FluentConfiguration configuration,
@@ -323,10 +328,6 @@ public class FlywayAutoConfiguration {
 					// Flyway 5.x
 				}
 			}
-		}
-
-		private String normalizePrefix(String location) {
-			return location.replace("filesystem:", "file:");
 		}
 
 		@Bean

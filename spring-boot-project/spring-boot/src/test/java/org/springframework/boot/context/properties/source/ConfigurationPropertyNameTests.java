@@ -718,17 +718,17 @@ class ConfigurationPropertyNameTests {
 	void hashCodeIsStored() {
 		ConfigurationPropertyName name = ConfigurationPropertyName.of("hash.code");
 		int hashCode = name.hashCode();
-		// hasFieldOrPropertyWithValue would lookup for hashCode()
+		// hasFieldOrPropertyWithValue would look up for hashCode()
 		assertThat(ReflectionTestUtils.getField(name, "hashCode")).isEqualTo(hashCode);
 	}
 
 	@Test
-	void hasIndexedElementWhenHasIndexedElementReturnsTrue() throws Exception {
+	void hasIndexedElementWhenHasIndexedElementReturnsTrue() {
 		assertThat(ConfigurationPropertyName.of("foo[bar]").hasIndexedElement()).isTrue();
 	}
 
 	@Test
-	void hasIndexedElementWhenHasNoIndexedElementReturnsFalse() throws Exception {
+	void hasIndexedElementWhenHasNoIndexedElementReturnsFalse() {
 		assertThat(ConfigurationPropertyName.of("foo.bar").hasIndexedElement()).isFalse();
 	}
 

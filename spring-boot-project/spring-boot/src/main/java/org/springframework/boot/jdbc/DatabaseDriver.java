@@ -62,7 +62,7 @@ public enum DatabaseDriver {
 			"SELECT COUNT(*) FROM INFORMATION_SCHEMA.SYSTEM_USERS"),
 
 	/**
-	 * SQL Lite.
+	 * SQLite.
 	 */
 	SQLITE("SQLite", "org.sqlite.JDBC"),
 
@@ -75,6 +75,14 @@ public enum DatabaseDriver {
 	 * Maria DB.
 	 */
 	MARIADB("MariaDB", "org.mariadb.jdbc.Driver", "org.mariadb.jdbc.MariaDbDataSource", "SELECT 1"),
+
+	/**
+	 * Google App Engine.
+	 * @deprecated since 2.7.0 for removal in 3.0.0 without replacement following the
+	 * removal of AppEngineDriver from version 2.0 of the AppEngine API SDK.
+	 */
+	@Deprecated
+	GAE(null, "com.google.appengine.api.rdbms.AppEngineDriver"),
 
 	/**
 	 * Oracle.

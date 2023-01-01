@@ -35,8 +35,6 @@ import org.gradle.api.file.FileCollection;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.plugins.ApplicationPlugin;
 import org.gradle.api.plugins.BasePlugin;
-import org.gradle.api.plugins.ExtensionContainer;
-import org.gradle.api.plugins.JavaApplication;
 import org.gradle.api.plugins.JavaPlugin;
 import org.gradle.api.plugins.JavaPluginExtension;
 import org.gradle.api.provider.Provider;
@@ -48,7 +46,6 @@ import org.gradle.api.tasks.compile.JavaCompile;
 import org.gradle.jvm.toolchain.JavaToolchainService;
 import org.gradle.jvm.toolchain.JavaToolchainSpec;
 
-import org.springframework.boot.gradle.dsl.SpringBootExtension;
 import org.springframework.boot.gradle.tasks.bundling.BootBuildImage;
 import org.springframework.boot.gradle.tasks.bundling.BootJar;
 import org.springframework.boot.gradle.tasks.run.BootRun;
@@ -80,11 +77,10 @@ final class JavaPluginAction implements PluginApplicationAction {
 		classifyJarTask(project);
 		configureBuildTask(project);
 		configureDevelopmentOnlyConfiguration(project);
-		TaskProvider<ResolveMainClassName> resolveMainClassName = configureResolveMainClassNameTask(project);
-		TaskProvider<BootJar> bootJar = configureBootJarTask(project, resolveMainClassName);
+		TaskProvider<BootJar> bootJar = configureBootJarTask(project);
 		configureBootBuildImageTask(project, bootJar);
 		configureArtifactPublication(bootJar);
-		configureBootRunTask(project, resolveMainClassName);
+		configureBootRunTask(project);
 		project.afterEvaluate(this::configureUtf8Encoding);
 		configureParametersCompilerArg(project);
 		configureAdditionalMetadataLocations(project);
@@ -100,47 +96,16 @@ final class JavaPluginAction implements PluginApplicationAction {
 				.configure((task) -> task.dependsOn(this.singlePublishedArtifact));
 	}
 
-	private TaskProvider<ResolveMainClassName> configureResolveMainClassNameTask(Project project) {
-		return project.getTasks().register(SpringBootPlugin.RESOLVE_MAIN_CLASS_NAME_TASK_NAME,
-				ResolveMainClassName.class, (resolveMainClassName) -> {
-					ExtensionContainer extensions = project.getExtensions();
-					resolveMainClassName.setDescription("Resolves the name of the application's main class.");
-					resolveMainClassName.setGroup(BasePlugin.BUILD_GROUP);
-					Callable<FileCollection> classpath = () -> project.getExtensions()
-							.getByType(SourceSetContainer.class).getByName(SourceSet.MAIN_SOURCE_SET_NAME).getOutput();
-					resolveMainClassName.setClasspath(classpath);
-					resolveMainClassName.getConfiguredMainClassName().convention(project.provider(() -> {
-						String javaApplicationMainClass = getJavaApplicationMainClass(extensions);
-						if (javaApplicationMainClass != null) {
-							return javaApplicationMainClass;
-						}
-						SpringBootExtension springBootExtension = project.getExtensions()
-								.findByType(SpringBootExtension.class);
-						return springBootExtension.getMainClass().getOrNull();
-					}));
-					resolveMainClassName.getOutputFile()
-							.set(project.getLayout().getBuildDirectory().file("resolvedMainClassName"));
-				});
-	}
-
-	private static String getJavaApplicationMainClass(ExtensionContainer extensions) {
-		JavaApplication javaApplication = extensions.findByType(JavaApplication.class);
-		if (javaApplication == null) {
-			return null;
-		}
-		return javaApplication.getMainClass().getOrNull();
-	}
-
-	private TaskProvider<BootJar> configureBootJarTask(Project project,
-			TaskProvider<ResolveMainClassName> resolveMainClassName) {
-		SourceSet mainSourceSet = javaPluginExtension(project).getSourceSets()
-				.getByName(SourceSet.MAIN_SOURCE_SET_NAME);
+	private TaskProvider<BootJar> configureBootJarTask(Project project) {
+		SourceSet mainSourceSet = sourceSets(project).getByName(SourceSet.MAIN_SOURCE_SET_NAME);
 		Configuration developmentOnly = project.getConfigurations()
 				.getByName(SpringBootPlugin.DEVELOPMENT_ONLY_CONFIGURATION_NAME);
 		Configuration productionRuntimeClasspath = project.getConfigurations()
 				.getByName(SpringBootPlugin.PRODUCTION_RUNTIME_CLASSPATH_CONFIGURATION_NAME);
 		Callable<FileCollection> classpath = () -> mainSourceSet.getRuntimeClasspath()
 				.minus((developmentOnly.minus(productionRuntimeClasspath))).filter(new JarTypeFileSpec());
+		TaskProvider<ResolveMainClassName> resolveMainClassName = ResolveMainClassName
+				.registerForTask(SpringBootPlugin.BOOT_JAR_TASK_NAME, project, classpath);
 		return project.getTasks().register(SpringBootPlugin.BOOT_JAR_TASK_NAME, BootJar.class, (bootJar) -> {
 			bootJar.setDescription(
 					"Assembles an executable jar archive containing the main classes and their dependencies.");
@@ -158,19 +123,20 @@ final class JavaPluginAction implements PluginApplicationAction {
 			buildImage.setDescription("Builds an OCI image of the application using the output of the bootJar task");
 			buildImage.setGroup(BasePlugin.BUILD_GROUP);
 			buildImage.getArchiveFile().set(bootJar.get().getArchiveFile());
-			buildImage.getTargetJavaVersion()
-					.set(project.provider(() -> javaPluginExtension(project).getTargetCompatibility()));
+			buildImage.getTargetJavaVersion().set(project.provider(
+					() -> project.getExtensions().getByType(JavaPluginExtension.class).getTargetCompatibility()));
 		});
 	}
 
-	@SuppressWarnings("deprecation")
 	private void configureArtifactPublication(TaskProvider<BootJar> bootJar) {
 		this.singlePublishedArtifact.addJarCandidate(bootJar);
 	}
 
-	private void configureBootRunTask(Project project, TaskProvider<ResolveMainClassName> resolveMainClassName) {
-		Callable<FileCollection> classpath = () -> javaPluginExtension(project).getSourceSets()
-				.findByName(SourceSet.MAIN_SOURCE_SET_NAME).getRuntimeClasspath().filter(new JarTypeFileSpec());
+	private void configureBootRunTask(Project project) {
+		Callable<FileCollection> classpath = () -> sourceSets(project).findByName(SourceSet.MAIN_SOURCE_SET_NAME)
+				.getRuntimeClasspath().filter(new JarTypeFileSpec());
+		TaskProvider<ResolveMainClassName> resolveProvider = ResolveMainClassName.registerForTask("bootRun", project,
+				classpath);
 		project.getTasks().register("bootRun", BootRun.class, (run) -> {
 			run.setDescription("Runs this project as a Spring Boot application.");
 			run.setGroup(ApplicationPlugin.APPLICATION_GROUP);
@@ -181,7 +147,7 @@ final class JavaPluginAction implements PluginApplicationAction {
 				}
 				return Collections.emptyList();
 			});
-			run.getMainClass().convention(resolveMainClassName.flatMap(ResolveMainClassName::readMainClassName));
+			run.getMainClass().convention(resolveProvider.flatMap(ResolveMainClassName::readMainClassName));
 			configureToolchainConvention(project, run);
 		});
 	}
@@ -192,8 +158,9 @@ final class JavaPluginAction implements PluginApplicationAction {
 		run.getJavaLauncher().convention(toolchainService.launcherFor(toolchain));
 	}
 
-	private JavaPluginExtension javaPluginExtension(Project project) {
-		return project.getExtensions().getByType(JavaPluginExtension.class);
+	@SuppressWarnings("deprecation")
+	private SourceSetContainer sourceSets(Project project) {
+		return project.getConvention().getPlugin(org.gradle.api.plugins.JavaPluginConvention.class).getSourceSets();
 	}
 
 	private void configureUtf8Encoding(Project evaluatedProject) {
@@ -221,9 +188,8 @@ final class JavaPluginAction implements PluginApplicationAction {
 	}
 
 	private void configureAdditionalMetadataLocations(JavaCompile compile) {
-		SourceSetContainer sourceSets = compile.getProject().getExtensions().getByType(JavaPluginExtension.class)
-				.getSourceSets();
-		sourceSets.stream().filter((candidate) -> candidate.getCompileJavaTaskName().equals(compile.getName()))
+		sourceSets(compile.getProject()).stream()
+				.filter((candidate) -> candidate.getCompileJavaTaskName().equals(compile.getName()))
 				.map((match) -> match.getResources().getSrcDirs()).findFirst()
 				.ifPresent((locations) -> compile.doFirst(new AdditionalMetadataLocationsConfigurer(locations)));
 	}

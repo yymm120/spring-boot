@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 
@@ -57,6 +58,7 @@ import org.springframework.boot.context.properties.bind.BindException;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.boot.context.properties.bind.validation.BindValidationException;
 import org.springframework.boot.context.properties.source.ConfigurationPropertyName;
+import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.convert.DataSizeUnit;
 import org.springframework.boot.convert.DurationFormat;
 import org.springframework.boot.convert.DurationStyle;
@@ -254,6 +256,7 @@ class ConfigurationPropertiesTests {
 
 	@Test
 	void loadWhenBindingWithDefaultsInXmlShouldBind() {
+		removeSystemProperties();
 		load(new Class<?>[] { BasicConfiguration.class, DefaultsInXmlConfiguration.class });
 		BasicProperties bean = this.context.getBean(BasicProperties.class);
 		assertThat(bean.name).isEqualTo("bar");
@@ -476,7 +479,6 @@ class ConfigurationPropertiesTests {
 	}
 
 	@Test
-	@SuppressWarnings("unchecked")
 	void loadWhenEnvironmentPrefixSetShouldBind() {
 		MutablePropertySources sources = this.context.getEnvironment().getPropertySources();
 		sources.replace(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
@@ -853,6 +855,17 @@ class ConfigurationPropertiesTests {
 	}
 
 	@Test
+	void loadWhenBindingToConstructorParametersWithEmptyDefaultValueShouldBind() {
+		load(ConstructorParameterEmptyDefaultValueConfiguration.class);
+		ConstructorParameterEmptyDefaultValueProperties bean = this.context
+				.getBean(ConstructorParameterEmptyDefaultValueProperties.class);
+		assertThat(bean.getSet()).isEmpty();
+		assertThat(bean.getMap()).isEmpty();
+		assertThat(bean.getArray()).isEmpty();
+		assertThat(bean.getOptional()).isEmpty();
+	}
+
+	@Test
 	void loadWhenBindingToConstructorParametersWithDefaultDataUnitShouldBind() {
 		load(ConstructorParameterWithUnitConfiguration.class);
 		ConstructorParameterWithUnitProperties bean = this.context
@@ -1089,6 +1102,15 @@ class ConfigurationPropertiesTests {
 		BoundConfigurationProperties bound = BoundConfigurationProperties.get(this.context);
 		Set<ConfigurationPropertyName> keys = bound.getAll().keySet();
 		assertThat(keys.stream().map(ConfigurationPropertyName::toString)).contains("name", "nested.name");
+	}
+
+	@Test // gh-28592
+	void loadWhenBindingWithCustomConverterAndObjectToObjectMethod() {
+		this.context.getBeanFactory().setConversionService(ApplicationConversionService.getSharedInstance());
+		load(WithCustomConverterAndObjectToObjectMethodConfiguration.class, "test.item=foo");
+		WithCustomConverterAndObjectToObjectMethodProperties bean = this.context
+				.getBean(WithCustomConverterAndObjectToObjectMethodProperties.class);
+		assertThat(bean.getItem().getValue()).isEqualTo("foo");
 	}
 
 	private AnnotationConfigApplicationContext load(Class<?> configuration, String... inlinedProperties) {
@@ -2144,6 +2166,45 @@ class ConfigurationPropertiesTests {
 	}
 
 	@ConfigurationProperties(prefix = "test")
+	static class ConstructorParameterEmptyDefaultValueProperties {
+
+		private final Set<String> set;
+
+		private final Map<String, String> map;
+
+		private final int[] array;
+
+		private final Optional<String> optional;
+
+		ConstructorParameterEmptyDefaultValueProperties(@DefaultValue Set<String> set,
+				@DefaultValue Map<String, String> map, @DefaultValue int[] array,
+				@DefaultValue Optional<String> optional) {
+			this.set = set;
+			this.map = map;
+			this.array = array;
+			this.optional = optional;
+		}
+
+		Set<String> getSet() {
+			return this.set;
+		}
+
+		Map<String, String> getMap() {
+			return this.map;
+		}
+
+		int[] getArray() {
+			return this.array;
+		}
+
+		Optional<String> getOptional() {
+			return this.optional;
+		}
+
+	}
+
+	@ConstructorBinding
+	@ConfigurationProperties(prefix = "test")
 	static class ConstructorParameterWithUnitProperties {
 
 		private final Duration duration;
@@ -2217,6 +2278,11 @@ class ConfigurationPropertiesTests {
 
 	@EnableConfigurationProperties(ConstructorParameterProperties.class)
 	static class ConstructorParameterConfiguration {
+
+	}
+
+	@EnableConfigurationProperties(ConstructorParameterEmptyDefaultValueProperties.class)
+	static class ConstructorParameterEmptyDefaultValueConfiguration {
 
 	}
 
@@ -2742,6 +2808,42 @@ class ConfigurationPropertiesTests {
 	@Configuration
 	@EnableConfigurationProperties(WithPublicStringConstructorProperties.class)
 	static class WithPublicStringConstructorPropertiesConfiguration {
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	@EnableConfigurationProperties(WithCustomConverterAndObjectToObjectMethodProperties.class)
+	static class WithCustomConverterAndObjectToObjectMethodConfiguration {
+
+		@Bean
+		@ConfigurationPropertiesBinding
+		WithObjectToObjectMethodConverter withObjectToObjectMethodConverter() {
+			return new WithObjectToObjectMethodConverter();
+		}
+
+	}
+
+	@ConfigurationProperties("test")
+	static class WithCustomConverterAndObjectToObjectMethodProperties {
+
+		private WithPublicObjectToObjectMethod item;
+
+		WithPublicObjectToObjectMethod getItem() {
+			return this.item;
+		}
+
+		void setItem(WithPublicObjectToObjectMethod item) {
+			this.item = item;
+		}
+
+	}
+
+	static class WithObjectToObjectMethodConverter implements Converter<String, WithPublicObjectToObjectMethod> {
+
+		@Override
+		public WithPublicObjectToObjectMethod convert(String source) {
+			return new WithPublicObjectToObjectMethod(source);
+		}
 
 	}
 

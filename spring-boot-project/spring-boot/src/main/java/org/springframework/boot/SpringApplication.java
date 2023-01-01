@@ -34,8 +34,10 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.BeansException;
 import org.springframework.beans.CachedIntrospectionResults;
 import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.groovy.GroovyBeanDefinitionReader;
 import org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory;
@@ -58,6 +60,7 @@ import org.springframework.context.annotation.AnnotatedBeanDefinitionReader;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.AnnotationConfigUtils;
 import org.springframework.context.annotation.ClassPathBeanDefinitionScanner;
+import org.springframework.context.annotation.ConfigurationClassPostProcessor;
 import org.springframework.context.support.AbstractApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.GenericTypeResolver;
@@ -71,7 +74,6 @@ import org.springframework.core.env.Environment;
 import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.env.SimpleCommandLinePropertySource;
-import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.core.io.support.SpringFactoriesLoader;
@@ -357,15 +359,16 @@ public class SpringApplication {
 		return environment;
 	}
 
-	private Class<? extends StandardEnvironment> deduceEnvironmentClass() {
-		switch (this.webApplicationType) {
-		case SERVLET:
-			return ApplicationServletEnvironment.class;
-		case REACTIVE:
-			return ApplicationReactiveWebEnvironment.class;
-		default:
+	private Class<? extends ConfigurableEnvironment> deduceEnvironmentClass() {
+		Class<? extends ConfigurableEnvironment> environmentType = this.applicationContextFactory
+				.getEnvironmentType(this.webApplicationType);
+		if (environmentType == null && this.applicationContextFactory != ApplicationContextFactory.DEFAULT) {
+			environmentType = ApplicationContextFactory.DEFAULT.getEnvironmentType(this.webApplicationType);
+		}
+		if (environmentType == null) {
 			return ApplicationEnvironment.class;
 		}
+		return environmentType;
 	}
 
 	private void prepareContext(DefaultBootstrapContext bootstrapContext, ConfigurableApplicationContext context,
@@ -396,6 +399,7 @@ public class SpringApplication {
 		if (this.lazyInitialization) {
 			context.addBeanFactoryPostProcessor(new LazyInitializationBeanFactoryPostProcessor());
 		}
+		context.addBeanFactoryPostProcessor(new PropertySourceOrderingBeanFactoryPostProcessor(context));
 		// Load the sources
 		Set<Object> sources = getAllSources();
 		Assert.notEmpty(sources, "Sources must not be empty");
@@ -462,14 +466,11 @@ public class SpringApplication {
 		if (this.environment != null) {
 			return this.environment;
 		}
-		switch (this.webApplicationType) {
-		case SERVLET:
-			return new ApplicationServletEnvironment();
-		case REACTIVE:
-			return new ApplicationReactiveWebEnvironment();
-		default:
-			return new ApplicationEnvironment();
+		ConfigurableEnvironment environment = this.applicationContextFactory.createEnvironment(this.webApplicationType);
+		if (environment == null && this.applicationContextFactory != ApplicationContextFactory.DEFAULT) {
+			environment = ApplicationContextFactory.DEFAULT.createEnvironment(this.webApplicationType);
 		}
+		return (environment != null) ? environment : new ApplicationEnvironment();
 	}
 
 	/**
@@ -1334,8 +1335,8 @@ public class SpringApplication {
 	 * print stack traces of any encountered. Applies the specified
 	 * {@link ExitCodeGenerator ExitCodeGenerators} in addition to any Spring beans that
 	 * implement {@link ExitCodeGenerator}. When multiple generators are available, the
-	 * first non-zero exit code is used. Generators ordered based on their {@link Ordered}
-	 * implementation and {@link Order @Order} annotation.
+	 * first non-zero exit code is used. Generators are ordered based on their
+	 * {@link Ordered} implementation and {@link Order @Order} annotation.
 	 * @param context the context to close if possible
 	 * @param exitCodeGenerators exit code generators
 	 * @return the outcome (0 if successful)
@@ -1376,6 +1377,30 @@ public class SpringApplication {
 		List<E> list = new ArrayList<>(elements);
 		list.sort(AnnotationAwareOrderComparator.INSTANCE);
 		return new LinkedHashSet<>(list);
+	}
+
+	/**
+	 * {@link BeanFactoryPostProcessor} to re-order our property sources below any
+	 * {@code @PropertySource} items added by the {@link ConfigurationClassPostProcessor}.
+	 */
+	private static class PropertySourceOrderingBeanFactoryPostProcessor implements BeanFactoryPostProcessor, Ordered {
+
+		private final ConfigurableApplicationContext context;
+
+		PropertySourceOrderingBeanFactoryPostProcessor(ConfigurableApplicationContext context) {
+			this.context = context;
+		}
+
+		@Override
+		public int getOrder() {
+			return Ordered.HIGHEST_PRECEDENCE;
+		}
+
+		@Override
+		public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
+			DefaultPropertiesPropertySource.moveToEnd(this.context.getEnvironment());
+		}
+
 	}
 
 }

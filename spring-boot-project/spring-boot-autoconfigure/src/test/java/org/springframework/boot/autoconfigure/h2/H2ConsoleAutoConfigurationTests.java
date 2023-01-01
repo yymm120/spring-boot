@@ -16,6 +16,8 @@
 
 package org.springframework.boot.autoconfigure.h2;
 
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.SQLException;
@@ -137,7 +139,8 @@ class H2ConsoleAutoConfigurationTests {
 	@Test
 	@ExtendWith(OutputCaptureExtension.class)
 	void allDataSourceUrlsAreLoggedWhenMultipleAvailable(CapturedOutput output) {
-		this.contextRunner
+		ClassLoader webAppClassLoader = new URLClassLoader(new URL[0]);
+		this.contextRunner.withClassLoader(webAppClassLoader)
 				.withUserConfiguration(FailingDataSourceConfiguration.class, MultiDataSourceConfiguration.class)
 				.withPropertyValues("spring.h2.console.enabled=true").run((context) -> assertThat(output).contains(
 						"H2 console available at '/h2-console'. Databases available at 'someJdbcUrl', 'anotherJdbcUrl'"));
@@ -179,9 +182,15 @@ class H2ConsoleAutoConfigurationTests {
 
 		private DataSource mockDataSource(String url) throws SQLException {
 			DataSource dataSource = mock(DataSource.class);
-			given(dataSource.getConnection()).willReturn(mock(Connection.class));
-			given(dataSource.getConnection().getMetaData()).willReturn(mock(DatabaseMetaData.class));
-			given(dataSource.getConnection().getMetaData().getURL()).willReturn(url);
+			given(dataSource.getConnection()).will((invocation) -> {
+				assertThat(Thread.currentThread().getContextClassLoader()).isEqualTo(getClass().getClassLoader());
+				Connection connection = mock(Connection.class);
+				DatabaseMetaData metadata = mock(DatabaseMetaData.class);
+				given(connection.getMetaData()).willReturn(metadata);
+				given(metadata.getURL()).willReturn(url);
+				return connection;
+			});
+
 			return dataSource;
 		}
 

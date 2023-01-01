@@ -193,6 +193,19 @@ public class EnvironmentEndpoint {
 		}
 	}
 
+	/**
+	 * Apply sanitization to the given name and value.
+	 * @param key the name to sanitize
+	 * @param value the value to sanitize
+	 * @return the sanitized value
+	 * @deprecated since 2.6.0 for removal in 3.0.0 as sanitization should be internal to
+	 * the class
+	 */
+	@Deprecated
+	public Object sanitize(String key, Object value) {
+		return this.sanitizer.sanitize(key, value);
+	}
+
 	private Object sanitize(PropertySource<?> source, String name, Object value) {
 		return this.sanitizer.sanitize(new SanitizableData(source, name, value));
 	}

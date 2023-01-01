@@ -47,9 +47,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RunnableFuture;
@@ -60,26 +58,25 @@ import java.util.zip.GZIPInputStream;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
+import javax.servlet.AsyncContext;
+import javax.servlet.Filter;
+import javax.servlet.FilterChain;
+import javax.servlet.FilterConfig;
+import javax.servlet.GenericServlet;
+import javax.servlet.ServletContext;
+import javax.servlet.ServletContextEvent;
+import javax.servlet.ServletContextListener;
+import javax.servlet.ServletException;
+import javax.servlet.ServletRegistration.Dynamic;
+import javax.servlet.ServletRequest;
+import javax.servlet.ServletResponse;
+import javax.servlet.SessionCookieConfig;
+import javax.servlet.http.Cookie;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
 
-import jakarta.servlet.AsyncContext;
-import jakarta.servlet.Filter;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.FilterConfig;
-import jakarta.servlet.GenericServlet;
-import jakarta.servlet.ServletContext;
-import jakarta.servlet.ServletContextEvent;
-import jakarta.servlet.ServletContextListener;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.ServletRegistration.Dynamic;
-import jakarta.servlet.ServletRequest;
-import jakarta.servlet.ServletResponse;
-import jakarta.servlet.SessionCookieConfig;
-import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServlet;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import jakarta.servlet.http.HttpSession;
-import org.apache.catalina.webresources.TomcatURLStreamHandlerFactory;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.entity.InputStreamFactory;
@@ -114,6 +111,7 @@ import org.springframework.boot.system.ApplicationHome;
 import org.springframework.boot.system.ApplicationTemp;
 import org.springframework.boot.testsupport.system.CapturedOutput;
 import org.springframework.boot.testsupport.system.OutputCaptureExtension;
+import org.springframework.boot.testsupport.web.servlet.DirtiesUrlFactories;
 import org.springframework.boot.testsupport.web.servlet.ExampleFilter;
 import org.springframework.boot.testsupport.web.servlet.ExampleServlet;
 import org.springframework.boot.web.server.Compression;
@@ -142,7 +140,6 @@ import org.springframework.http.client.ClientHttpRequest;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.util.ClassUtils;
 import org.springframework.util.FileCopyUtils;
 import org.springframework.util.StreamUtils;
 
@@ -170,6 +167,7 @@ import static org.mockito.Mockito.mock;
  * @author Scott Frederick
  */
 @ExtendWith(OutputCaptureExtension.class)
+@DirtiesUrlFactories
 public abstract class AbstractServletWebServerFactoryTests {
 
 	@TempDir
@@ -207,20 +205,6 @@ public abstract class AbstractServletWebServerFactoryTests {
 			catch (Exception ex) {
 				// Ignore
 			}
-		}
-		if (ClassUtils.isPresent("org.apache.catalina.webresources.TomcatURLStreamHandlerFactory",
-				getClass().getClassLoader())) {
-			ReflectionTestUtils.setField(TomcatURLStreamHandlerFactory.class, "instance", null);
-		}
-		ReflectionTestUtils.setField(URL.class, "factory", null);
-	}
-
-	@AfterEach
-	void clearUrlStreamHandlerFactory() {
-		if (ClassUtils.isPresent("org.apache.catalina.webresources.TomcatURLStreamHandlerFactory",
-				getClass().getClassLoader())) {
-			ReflectionTestUtils.setField(TomcatURLStreamHandlerFactory.class, "instance", null);
-			ReflectionTestUtils.setField(URL.class, "factory", null);
 		}
 	}
 
@@ -734,7 +718,6 @@ public abstract class AbstractServletWebServerFactoryTests {
 		ssl.setCertificate(cert);
 		ssl.setCertificatePrivateKey(privateKey);
 		ssl.setTrustCertificate(cert);
-		ssl.setKeyStorePassword("secret");
 		return ssl;
 	}
 
@@ -903,7 +886,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 		AtomicReference<ServletContext> contextReference = new AtomicReference<>();
 		this.webServer = factory.getWebServer(contextReference::set);
 		assertThat(contextReference.get().getEffectiveSessionTrackingModes())
-				.isEqualTo(EnumSet.of(jakarta.servlet.SessionTrackingMode.SSL));
+				.isEqualTo(EnumSet.of(javax.servlet.SessionTrackingMode.SSL));
 	}
 
 	@Test
@@ -1102,8 +1085,8 @@ public abstract class AbstractServletWebServerFactoryTests {
 		AtomicReference<ServletContext> contextReference = new AtomicReference<>();
 		factory.getWebServer(contextReference::set).start();
 		ServletContext servletContext = contextReference.get();
-		assertThat(servletContext.getEffectiveSessionTrackingModes()).isEqualTo(
-				EnumSet.of(jakarta.servlet.SessionTrackingMode.COOKIE, jakarta.servlet.SessionTrackingMode.URL));
+		assertThat(servletContext.getEffectiveSessionTrackingModes())
+				.isEqualTo(EnumSet.of(javax.servlet.SessionTrackingMode.COOKIE, javax.servlet.SessionTrackingMode.URL));
 		assertThat(servletContext.getSessionCookieConfig().getName()).isEqualTo("testname");
 		assertThat(servletContext.getSessionCookieConfig().getDomain()).isEqualTo("testdomain");
 		assertThat(servletContext.getSessionCookieConfig().getPath()).isEqualTo("/testpath");
@@ -1189,7 +1172,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 	}
 
 	@Test
-	void whenARequestIsActiveThenStopWillComplete() throws InterruptedException, BrokenBarrierException {
+	void whenARequestIsActiveThenStopWillComplete() throws InterruptedException {
 		AbstractServletWebServerFactory factory = getFactory();
 		BlockingServlet blockingServlet = new BlockingServlet();
 		this.webServer = factory
@@ -1229,8 +1212,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 	}
 
 	@Test
-	protected void whenHttp2IsEnabledAndSslIsDisabledThenHttp11CanStillBeUsed()
-			throws InterruptedException, ExecutionException, IOException, URISyntaxException {
+	protected void whenHttp2IsEnabledAndSslIsDisabledThenHttp11CanStillBeUsed() throws IOException, URISyntaxException {
 		AbstractServletWebServerFactory factory = getFactory();
 		Http2 http2 = new Http2();
 		http2.setEnabled(true);
@@ -1241,8 +1223,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 	}
 
 	@Test
-	void whenARequestIsActiveAfterGracefulShutdownEndsThenStopWillComplete()
-			throws InterruptedException, BrokenBarrierException {
+	void whenARequestIsActiveAfterGracefulShutdownEndsThenStopWillComplete() throws InterruptedException {
 		AbstractServletWebServerFactory factory = getFactory();
 		factory.setShutdown(Shutdown.GRACEFUL);
 		BlockingServlet blockingServlet = new BlockingServlet();

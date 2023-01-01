@@ -16,6 +16,7 @@
 
 package org.springframework.boot.gradle.tasks.bundling;
 
+import groovy.lang.Closure;
 import org.gradle.api.Action;
 import org.gradle.api.GradleException;
 import org.gradle.api.tasks.Input;
@@ -115,6 +116,15 @@ public class DockerSpec {
 	}
 
 	/**
+	 * Customizes the {@link DockerRegistrySpec} that configures authentication to the
+	 * builder registry.
+	 * @param closure the closure to apply
+	 */
+	public void builderRegistry(Closure<?> closure) {
+		builderRegistry(Closures.asAction(closure));
+	}
+
+	/**
 	 * Returns the {@link DockerRegistrySpec} that configures authentication to the
 	 * publishing registry.
 	 * @return the registry spec
@@ -131,6 +141,15 @@ public class DockerSpec {
 	 */
 	public void publishRegistry(Action<DockerRegistrySpec> action) {
 		action.execute(this.publishRegistry);
+	}
+
+	/**
+	 * Customizes the {@link DockerRegistrySpec} that configures authentication to the
+	 * publishing registry.
+	 * @param closure the closure to apply
+	 */
+	public void publishRegistry(Closure<?> closure) {
+		publishRegistry(Closures.asAction(closure));
 	}
 
 	/**
@@ -172,7 +191,7 @@ public class DockerSpec {
 
 	private DockerConfiguration customizePublishAuthentication(DockerConfiguration dockerConfiguration) {
 		if (this.publishRegistry == null || this.publishRegistry.hasEmptyAuth()) {
-			return dockerConfiguration;
+			return dockerConfiguration.withEmptyPublishRegistryAuthentication();
 		}
 		if (this.publishRegistry.hasTokenAuth() && !this.publishRegistry.hasUserAuth()) {
 			return dockerConfiguration.withPublishRegistryTokenAuthentication(this.publishRegistry.getToken());

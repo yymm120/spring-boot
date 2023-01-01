@@ -18,7 +18,9 @@ package org.springframework.boot.maven;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.net.ConnectException;
+import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +51,7 @@ import org.springframework.boot.loader.tools.RunProcess;
  */
 @Mojo(name = "start", requiresProject = true, defaultPhase = LifecyclePhase.PRE_INTEGRATION_TEST,
 		requiresDependencyResolution = ResolutionScope.TEST)
-public class StartMojo extends AbstractApplicationRunMojo {
+public class StartMojo extends AbstractRunMojo {
 
 	private static final String ENABLE_MBEAN_PROPERTY = "--spring.application.admin.enabled=true";
 
@@ -63,13 +65,13 @@ public class StartMojo extends AbstractApplicationRunMojo {
 	private String jmxName;
 
 	/**
-	 * The port to use to expose the platform MBeanServer.
+	 * The port to use to expose the platform MBeanServer if the application is forked.
 	 */
 	@Parameter(defaultValue = "9001")
 	private int jmxPort;
 
 	/**
-	 * The number of milli-seconds to wait between each attempt to check if the spring
+	 * The number of milliseconds to wait between each attempt to check if the spring
 	 * application is ready.
 	 */
 	@Parameter(property = "spring-boot.start.wait", defaultValue = "500")
@@ -86,7 +88,7 @@ public class StartMojo extends AbstractApplicationRunMojo {
 	private final Object lock = new Object();
 
 	@Override
-	protected void run(File workingDirectory, List<String> args, Map<String, String> environmentVariables)
+	protected void runWithForkedJvm(File workingDirectory, List<String> args, Map<String, String> environmentVariables)
 			throws MojoExecutionException, MojoFailureException {
 		RunProcess runProcess = runProcess(workingDirectory, args, environmentVariables);
 		try {
@@ -111,27 +113,86 @@ public class StartMojo extends AbstractApplicationRunMojo {
 	}
 
 	@Override
+	@SuppressWarnings("deprecation")
 	protected RunArguments resolveApplicationArguments() {
 		RunArguments applicationArguments = super.resolveApplicationArguments();
 		applicationArguments.getArgs().addLast(ENABLE_MBEAN_PROPERTY);
-		applicationArguments.getArgs().addLast(JMX_NAME_PROPERTY_PREFIX + this.jmxName);
+		if (isFork()) {
+			applicationArguments.getArgs().addLast(JMX_NAME_PROPERTY_PREFIX + this.jmxName);
+		}
 		return applicationArguments;
 	}
 
 	@Override
+	@SuppressWarnings("deprecation")
 	protected RunArguments resolveJvmArguments() {
 		RunArguments jvmArguments = super.resolveJvmArguments();
-		List<String> remoteJmxArguments = new ArrayList<>();
-		remoteJmxArguments.add("-Dcom.sun.management.jmxremote");
-		remoteJmxArguments.add("-Dcom.sun.management.jmxremote.port=" + this.jmxPort);
-		remoteJmxArguments.add("-Dcom.sun.management.jmxremote.authenticate=false");
-		remoteJmxArguments.add("-Dcom.sun.management.jmxremote.ssl=false");
-		remoteJmxArguments.add("-Djava.rmi.server.hostname=127.0.0.1");
-		jvmArguments.getArgs().addAll(remoteJmxArguments);
+		if (isFork()) {
+			List<String> remoteJmxArguments = new ArrayList<>();
+			remoteJmxArguments.add("-Dcom.sun.management.jmxremote");
+			remoteJmxArguments.add("-Dcom.sun.management.jmxremote.port=" + this.jmxPort);
+			remoteJmxArguments.add("-Dcom.sun.management.jmxremote.authenticate=false");
+			remoteJmxArguments.add("-Dcom.sun.management.jmxremote.ssl=false");
+			remoteJmxArguments.add("-Djava.rmi.server.hostname=127.0.0.1");
+			jvmArguments.getArgs().addAll(remoteJmxArguments);
+		}
 		return jvmArguments;
 	}
 
+	@Override
+	@Deprecated
+	protected void runWithMavenJvm(String startClassName, String... arguments) throws MojoExecutionException {
+		IsolatedThreadGroup threadGroup = new IsolatedThreadGroup(startClassName);
+		Thread launchThread = new Thread(threadGroup, new LaunchRunner(startClassName, arguments),
+				startClassName + ".main()");
+		launchThread.setContextClassLoader(new URLClassLoader(getClassPathUrls()));
+		launchThread.start();
+		waitForSpringApplication(this.wait, this.maxAttempts);
+	}
+
+	private void waitForSpringApplication(long wait, int maxAttempts) throws MojoExecutionException {
+		SpringApplicationAdminClient client = new SpringApplicationAdminClient(
+				ManagementFactory.getPlatformMBeanServer(), this.jmxName);
+		getLog().debug("Waiting for spring application to start...");
+		for (int i = 0; i < maxAttempts; i++) {
+			if (client.isReady()) {
+				return;
+			}
+			String message = "Spring application is not ready yet, waiting " + wait + "ms (attempt " + (i + 1) + ")";
+			getLog().debug(message);
+			synchronized (this.lock) {
+				try {
+					this.lock.wait(wait);
+				}
+				catch (InterruptedException ex) {
+					Thread.currentThread().interrupt();
+					throw new IllegalStateException("Interrupted while waiting for Spring Boot app to start.");
+				}
+			}
+		}
+		throw new MojoExecutionException(
+				"Spring application did not start before the configured timeout (" + (wait * maxAttempts) + "ms");
+	}
+
+	@SuppressWarnings("deprecation")
 	private void waitForSpringApplication() throws MojoFailureException, MojoExecutionException {
+		try {
+			if (isFork()) {
+				waitForForkedSpringApplication();
+			}
+			else {
+				doWaitForSpringApplication(ManagementFactory.getPlatformMBeanServer());
+			}
+		}
+		catch (IOException ex) {
+			throw new MojoFailureException("Could not contact Spring Boot application", ex);
+		}
+		catch (Exception ex) {
+			throw new MojoExecutionException("Could not figure out if the application has started", ex);
+		}
+	}
+
+	private void waitForForkedSpringApplication() throws IOException, MojoExecutionException {
 		try {
 			getLog().debug("Connecting to local MBeanServer at port " + this.jmxPort);
 			try (JMXConnector connector = execute(this.wait, this.maxAttempts, new CreateJmxConnector(this.jmxPort))) {
@@ -145,7 +206,7 @@ public class StartMojo extends AbstractApplicationRunMojo {
 			}
 		}
 		catch (IOException ex) {
-			throw new MojoFailureException("Could not contact Spring Boot application", ex);
+			throw ex;
 		}
 		catch (Exception ex) {
 			throw new MojoExecutionException("Failed to connect to MBean server at port " + this.jmxPort, ex);
@@ -153,7 +214,7 @@ public class StartMojo extends AbstractApplicationRunMojo {
 	}
 
 	private void doWaitForSpringApplication(MBeanServerConnection connection)
-			throws IOException, MojoExecutionException, MojoFailureException {
+			throws MojoExecutionException, MojoFailureException {
 		final SpringApplicationAdminClient client = new SpringApplicationAdminClient(connection, this.jmxName);
 		try {
 			execute(this.wait, this.maxAttempts, () -> (client.isReady() ? true : null));

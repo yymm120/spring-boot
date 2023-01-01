@@ -76,6 +76,7 @@ import org.springframework.boot.web.embedded.netty.NettyReactiveWebServerFactory
 import org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory;
 import org.springframework.boot.web.reactive.context.AnnotationConfigReactiveWebServerApplicationContext;
 import org.springframework.boot.web.reactive.context.ReactiveWebApplicationContext;
+import org.springframework.boot.web.reactive.context.StandardReactiveWebEnvironment;
 import org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
@@ -452,7 +453,8 @@ class SpringApplicationTests {
 		SpringApplication application = new SpringApplication(ExampleWebConfig.class);
 		application.setWebApplicationType(WebApplicationType.SERVLET);
 		this.context = application.run();
-		assertThat(this.context.getEnvironment()).isInstanceOf(ApplicationServletEnvironment.class);
+		assertThat(this.context.getEnvironment()).isInstanceOf(StandardServletEnvironment.class);
+		assertThat(this.context.getEnvironment().getClass().getName()).endsWith("ApplicationServletEnvironment");
 	}
 
 	@Test
@@ -460,7 +462,8 @@ class SpringApplicationTests {
 		SpringApplication application = new SpringApplication(ExampleReactiveWebConfig.class);
 		application.setWebApplicationType(WebApplicationType.REACTIVE);
 		this.context = application.run();
-		assertThat(this.context.getEnvironment()).isInstanceOf(ApplicationReactiveWebEnvironment.class);
+		assertThat(this.context.getEnvironment()).isInstanceOf(StandardReactiveWebEnvironment.class);
+		assertThat(this.context.getEnvironment().getClass().getName()).endsWith("ApplicationReactiveWebEnvironment");
 	}
 
 	@Test
@@ -1035,7 +1038,7 @@ class SpringApplicationTests {
 	void webApplicationSwitchedOffInListener() {
 		TestSpringApplication application = new TestSpringApplication(ExampleConfig.class);
 		application.addListeners((ApplicationListener<ApplicationEnvironmentPreparedEvent>) (event) -> {
-			assertThat(event.getEnvironment()).isInstanceOf(ApplicationServletEnvironment.class);
+			assertThat(event.getEnvironment().getClass().getName()).endsWith("ApplicationServletEnvironment");
 			TestPropertySourceUtils.addInlinedPropertiesToEnvironment(event.getEnvironment(), "foo=bar");
 			event.getSpringApplication().setWebApplicationType(WebApplicationType.NONE);
 		});
@@ -1061,7 +1064,8 @@ class SpringApplicationTests {
 		ConfigurableApplicationContext context = new SpringApplication(ExampleWebConfig.class)
 				.run("--spring.main.web-application-type=servlet");
 		assertThat(context).isInstanceOf(WebApplicationContext.class);
-		assertThat(context.getEnvironment()).isInstanceOf(ApplicationServletEnvironment.class);
+		assertThat(context.getEnvironment()).isInstanceOf(StandardServletEnvironment.class);
+		assertThat(context.getEnvironment().getClass().getName()).endsWith("ApplicationServletEnvironment");
 	}
 
 	@Test
@@ -1069,7 +1073,8 @@ class SpringApplicationTests {
 		ConfigurableApplicationContext context = new SpringApplication(ExampleReactiveWebConfig.class)
 				.run("--spring.main.web-application-type=reactive");
 		assertThat(context).isInstanceOf(ReactiveWebApplicationContext.class);
-		assertThat(context.getEnvironment()).isInstanceOf(ApplicationReactiveWebEnvironment.class);
+		assertThat(context.getEnvironment()).isInstanceOf(StandardReactiveWebEnvironment.class);
+		assertThat(context.getEnvironment().getClass().getName()).endsWith("ApplicationReactiveWebEnvironment");
 	}
 
 	@Test
@@ -1077,7 +1082,8 @@ class SpringApplicationTests {
 		ConfigurableApplicationContext context = new SpringApplication(ExampleReactiveWebConfig.class)
 				.run("--spring.profiles.active=withwebapplicationtype");
 		assertThat(context).isInstanceOf(ReactiveWebApplicationContext.class);
-		assertThat(context.getEnvironment()).isInstanceOf(ApplicationReactiveWebEnvironment.class);
+		assertThat(context.getEnvironment()).isInstanceOf(StandardReactiveWebEnvironment.class);
+		assertThat(context.getEnvironment().getClass().getName()).endsWith("ApplicationReactiveWebEnvironment");
 	}
 
 	@Test
@@ -1249,6 +1255,16 @@ class SpringApplicationTests {
 		application.setWebApplicationType(WebApplicationType.NONE);
 		this.context = application.run();
 		assertThat(application.getEnvironmentPrefix()).isEqualTo("my");
+	}
+
+	@Test
+	void movesConfigClassPropertySourcesToEnd() {
+		SpringApplication application = new SpringApplication(PropertySourceConfig.class);
+		application.setWebApplicationType(WebApplicationType.NONE);
+		application.setDefaultProperties(Collections.singletonMap("test.name", "test"));
+		this.context = application.run();
+		assertThat(this.context.getEnvironment().getProperty("test.name"))
+				.isEqualTo("spring-application-config-property-source");
 	}
 
 	@Test
@@ -1662,6 +1678,12 @@ class SpringApplicationTests {
 		NotLazyBean(AtomicInteger counter) {
 			counter.getAndIncrement();
 		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	@org.springframework.context.annotation.PropertySource("classpath:spring-application-config-property-source.properties")
+	static class PropertySourceConfig {
 
 	}
 
